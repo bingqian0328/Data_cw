@@ -234,12 +234,32 @@ ui <- navbarPage(
   tabPanel(
     "Q1",
     fluidPage(
+      # Section Header
       fluidRow(
+        column(width = 12, h3("Q1: How do delays vary across different airlines?"))
+      ),
+      
+      # Question 1: Airlines with highest average delay and delay rate
+      fluidRow(
+        column(width = 12, h4("1. Which airlines have the highest average delay duration and delay rate?")),
+        column(width = 12, p("This bar chart shows the percentage of flights delayed for each airline.")),
         column(width = 12, plotlyOutput("barPlot", height = "600px"))
       ),
+      
+      # Question 2: Common causes of delay for the airline with the highest average delay
       fluidRow(
-        column(width = 12, 
-          # Add a toggle to switch between Month and Season
+        column(width = 12, h4("2. For the airline that experienced the highest average delay, what are the common causes of delay?")),
+        column(width = 4, h5("Southwest Airlines"), plotlyOutput("southwestPieChart", height = "400px")),
+        column(width = 4, h5("JetBlue Airways"), plotlyOutput("jetbluePieChart", height = "400px")),
+        column(width = 4, h5("Frontier Airlines"), plotlyOutput("frontierPieChart", height = "400px"))
+      ),
+      
+      # Question 3: Delay variations across months or seasons
+      fluidRow(
+        column(width = 12, h4("3. How do delays for each airline vary across different times of the year (e.g., by month or season)?")),
+        column(width = 12, p("Use the toggle to view heatmap data by month or season.")),
+        column(
+          width = 12, 
           radioButtons(
             inputId = "heatmapView", 
             label = "View Heatmap by:",
@@ -249,12 +269,6 @@ ui <- navbarPage(
           ),
           plotlyOutput("interactiveHeatmap", height = "600px")
         )
-      ),
-      fluidRow(
-        # Row for three pie charts
-        column(width = 4, plotlyOutput("southwestPieChart", height = "400px")),
-        column(width = 4, plotlyOutput("jetbluePieChart", height = "400px")),
-        column(width = 4, plotlyOutput("frontierPieChart", height = "400px"))
       )
     )
   ),
@@ -262,6 +276,11 @@ ui <- navbarPage(
     "Q2",
     fluidPage(
       fluidRow(
+        column(width = 12, h3("Q2: Which airports experience the highest average delays?"))
+      ),
+      fluidRow(
+        column(width = 12, h4("1) Which airports have the highest proportion of delayed flights compared to their total operations?")),
+        column(width = 12, p("This map visualization shows airports with the highest delay rates.")),
         column(
           width = 12,
           selectInput(
@@ -274,6 +293,10 @@ ui <- navbarPage(
       ),
       fluidRow(
         column(width = 12, uiOutput("choroplethMapOutput"))  # Dynamically render the map
+      ),
+      fluidRow(
+        column(width = 12, h4("2. For all airports, which flight paths have the highest average delay?")),
+        column(width = 12, p("This map shows flight paths and highlights routes with significant delays."))
       ),
       sidebarLayout(
         sidebarPanel(
@@ -296,6 +319,8 @@ ui <- navbarPage(
         )
       ),
       fluidRow(
+        column(width = 12, h4("3. Do certain airports experience higher delays during specific months or seasons?")),
+        column(width = 12, p("Use the dropdown to group delay data by season or month.")),
         column(
           width = 12,
           selectInput(
@@ -315,10 +340,19 @@ ui <- navbarPage(
     "Q3",
     fluidPage(
       fluidRow(
+        column(width = 12, h3("Q3: What factors contribute the most to delays?"))
+      ),
+      fluidRow(
+        column(width = 12, h4("1. Which delay type (carrier, weather, NAS, security, or late aircraft) contributes the most to the total delay time?")),
+        column(width = 12, p("")),
         column(
           width = 12,
           plotlyOutput("delayTypeBarChart", height = "700px")
         )
+      ),
+      fluidRow(
+        column(width = 12, h4("2. Are certain delay types more frequent at specific times of the day / days of the week ?")),
+        column(width = 12, p(""))
       ),
       sidebarLayout(
         sidebarPanel(
@@ -332,6 +366,7 @@ ui <- navbarPage(
         )
       ),
       fluidRow(
+        column(width = 12, h4("3. Can flight distance be considered a significant factor contributing to flight delays? ")),
         column(width = 12, plotlyOutput("lineGraphDistanceDelay", height = "600px"))
       )
     )
