@@ -119,15 +119,29 @@ state_delay_data <- flights_data %>%
   ) %>%
   filter(!is.na(STATE))  # Remove NA states
 
-# Airport Delay Data Preparation for Choropleth Map (Cities)
+# Preprocess data for combined departing and arriving delays
 airport_delay_data <- flights_data %>%
-  group_by(ORIGIN, ORIGIN_CITY) %>%
-  summarise(
-    Avg_Delay = mean(Total_Delay, na.rm = TRUE),
-    Total_Flights = n()
+  # Combine departing and arriving flights into a single column
+  pivot_longer(
+    cols = c(ORIGIN, DEST),
+    names_to = "Flight_Type",
+    values_to = "Airport"
   ) %>%
-  ungroup()%>%
-  filter(Total_Flights >= 1000)
+  pivot_longer(
+    cols = c(ORIGIN_CITY, DEST_CITY),
+    names_to = "City_Type",
+    values_to = "Airport_City"
+  ) %>%
+  # Ensure proper pairing of Flight_Type and City_Type
+  filter((Flight_Type == "ORIGIN" & City_Type == "ORIGIN_CITY") |
+         (Flight_Type == "DEST" & City_Type == "DEST_CITY")) %>%
+  group_by(Airport, Airport_City) %>%
+  summarise(
+    Avg_Delay = mean(Total_Delay, na.rm = TRUE),  # Average delay (both departing and arriving flights)
+    Total_Flights = n(),                         # Total number of flights (departing + arriving)
+    .groups = "drop"
+  ) %>%
+  filter(Total_Flights >= 1000)  # Filter airports with at least 1000 flights
 
 # Data preparation for airport-level delay analysis
 airport_delay_correlation_data <- flights_data %>%
@@ -225,7 +239,7 @@ if (!file.exists(cache_file)) {
 
 # Merge geocoded coordinates back into the main dataset
 airport_delay_data <- airport_delay_data %>%
-  left_join(geocoded_data, by = "ORIGIN_CITY") %>%
+  left_join(geocoded_data, by = c("Airport_City" = "ORIGIN_CITY")) %>%
   filter(!is.na(latitude) & !is.na(longitude))  # Remove rows without geocodes
 
 # Define UI
@@ -662,7 +676,7 @@ output$choroplethMapStates <- renderPlotly({
 })
 
 
-# Choropleth map for airport delays with enhanced visualization
+# Choropleth map for airport delays with departing and arriving flights combined
 output$choroplethMapCities <- renderLeaflet({
   leaflet(airport_delay_data) %>%
     addTiles() %>%
@@ -674,8 +688,8 @@ output$choroplethMapCities <- renderLeaflet({
                ifelse(Avg_Delay > 10, "orange", "green"))),  # Color coding based on delay
       fillOpacity = 0.8,
       popup = ~paste0(
-        "<b>Airport:</b> ", ORIGIN, "<br>",
-        "<b>City:</b> ", ORIGIN_CITY, "<br>",
+        "<b>Airport:</b> ", Airport, "<br>",
+        "<b>City:</b> ", Airport_City, "<br>",
         "<b>Average Delay:</b> ", round(Avg_Delay, 2), " minutes<br>",
         "<b>Total Flights:</b> ", Total_Flights
       )
