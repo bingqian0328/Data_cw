@@ -19,7 +19,7 @@ library(leaflet)
 library(tidyr)
 
 # Load your dataset (replace with your actual dataset path)
-flights_data <- read.csv("/Users/bingqian/datacleaning/cleaned_dataset.csv")
+flights_data <- read.csv("/Users/bingqian/Data_cw/US_flight_delay_dataset.csv")
 
 # General Data Preparation
 flights_data <- flights_data %>%
@@ -81,6 +81,7 @@ airport_total_flights <- flights_data %>%
   group_by(Airport) %>%
   summarise(Total_Flights = n(), .groups = "drop")  # Count total flights (origin + destination)
 
+# Preprocess data for state-level delay analysis
 # Filter airports with at least 1000 total flights
 filtered_airports <- airport_total_flights %>%
   filter(Total_Flights >= 2000) %>%
@@ -89,8 +90,7 @@ filtered_airports <- airport_total_flights %>%
 # Filter flights data to include only valid airports
 filtered_flights_data <- flights_data %>%
   filter(ORIGIN %in% filtered_airports | DEST %in% filtered_airports)
-
-# Preprocess data for state-level delay analysis
+  
 state_delay_data <- filtered_flights_data %>%
   select(ORIGIN_STATE, DEST_STATE, Total_Delay) %>%
   pivot_longer(
@@ -141,7 +141,7 @@ airport_delay_data <- flights_data %>%
     Total_Flights = n(),                         # Total number of flights (departing + arriving)
     .groups = "drop"
   ) %>%
-  filter(Total_Flights >= 2000)  # Filter airports with at least 1000 flights
+  filter(Total_Flights >= 2000)  # Filter airports with at least 2000 flights
 
 # Data preparation for airport-level delay analysis
 airport_delay_correlation_data <- flights_data %>%
@@ -171,9 +171,31 @@ flights_box_data <- flights_data %>%
     )
   )
 
-
+# Calculate Delay Frequency for each airline
+calculate_delay_frequencies <- function(airline_code) {
+  flights_data %>%
+    filter(AIRLINE_CODE == airline_code) %>%
+    summarise(
+      Carrier = sum(DELAY_DUE_CARRIER > 0, na.rm = TRUE),
+      Weather = sum(DELAY_DUE_WEATHER > 0, na.rm = TRUE),
+      NAS = sum(DELAY_DUE_NAS > 0, na.rm = TRUE),
+      Security = sum(DELAY_DUE_SECURITY > 0, na.rm = TRUE),
+      Late_Aircraft = sum(DELAY_DUE_LATE_AIRCRAFT > 0, na.rm = TRUE)
+    ) %>%
+    pivot_longer(
+      cols = everything(),
+      names_to = "Cause",
+      values_to = "Frequency"
+    ) %>%
+    mutate(
+      Cause = recode(Cause,
+                     "NAS" = "National Air System",
+                     "Late_Aircraft" = "Late Aircraft")  # Rename causes
+    )
+}
 
 # Prepare the dataset with geocoded coordinates
+# Cache results in a local file to avoid re-running geocoding every time
 cache_file <- "geocoded_paths.rds"
 
 if (!file.exists(cache_file)) {
@@ -232,19 +254,15 @@ ui <- navbarPage(
       fluidRow(
         column(width = 12, h3("Q1: How do delays vary across different airlines?"))
       ),
-      
       # Add spacing
       br(),
-      
       # Question 1: Airlines with highest average delay and delay rate
       fluidRow(
         column(width = 12, p("This bar chart shows the percentage of flights delayed for each airline.")),
         column(width = 12, plotlyOutput("barPlot", height = "600px"))
       ),
-      
       # Add spacing
       br(), br(),
-      
       # Question 2: Common causes of delay for the airline with the highest average delay
       fluidRow(
         column(width = 12, h4("1.1 For the top 3 airlines that experienced the highest average delay, what are the common causes of delay?")),
@@ -252,10 +270,8 @@ ui <- navbarPage(
         column(width = 4, h5("JetBlue Airways"), plotlyOutput("jetbluePieChart", height = "400px")),
         column(width = 4, h5("Frontier Airlines"), plotlyOutput("frontierPieChart", height = "400px"))
       ),
-      
       # Add spacing
       br(), br(),
-      
       # Question 3: Delay variations across months or seasons
       fluidRow(
         column(width = 12, h4("1.2 How do delays for each airline vary across different times of the year (e.g., by month or season)?")),
@@ -292,17 +308,13 @@ ui <- navbarPage(
           )
         )
       ),
-      
       # Add spacing
       br(),
-      
       fluidRow(
         column(width = 12, uiOutput("choroplethMapOutput"))  # Dynamically render the map
       ),
-      
       # Add spacing
       br(),br(),
-      
       fluidRow(
         column(width = 12, h4("2.1 For airports with high average delays, which flight paths have the highest average delay for each airport?")),
         column(width = 12, p("This map shows flight paths and highlights routes with significant delays."))
@@ -341,10 +353,8 @@ ui <- navbarPage(
           leafletOutput("routeMap", height = "700px")
         )
       ),
-      
       # Add spacing
       br(),br(),
-      
       fluidRow(
         column(width = 12, h4("2.2 Do certain airports experience higher delays during specific months or seasons?")),
         column(width = 12, p("Use the dropdown to group delay data by season or month.")),
@@ -352,7 +362,7 @@ ui <- navbarPage(
           width = 12,
           selectInput(
             inputId = "barChartType",
-            label = "Select Grouping:",
+            label = "View by:",
             choices = c("Season", "Month"),
             selected = "Season"
           )
@@ -384,10 +394,8 @@ ui <- navbarPage(
           plotlyOutput("delayTypeBarChart", height = "700px")
         )
       ),
-      
       # Add spacing
       br(),br(),
-      
       fluidRow(
         column(width = 12, h4("3.1 Are certain delay types more frequent at specific times of the day / days of the week ?")),
         column(width = 12, p(""))
@@ -403,10 +411,8 @@ ui <- navbarPage(
           plotlyOutput("areaGraph")
         )
       ),
-      
       # Add spacing
       br(),br(),
-      
       fluidRow(
         column(width = 12, h4("3.2 Can flight distance be considered a significant factor contributing to flight delays? ")),
         column(width = 12, plotlyOutput("lineGraphDistanceDelay", height = "600px"))
@@ -506,30 +512,6 @@ output$interactiveHeatmap <- renderPlotly({
   # Use the text aesthetic for hover tooltips
   ggplotly(heatmap_plot, tooltip = "text")
 })
-
-
-calculate_delay_frequencies <- function(airline_code) {
-  flights_data %>%
-    filter(AIRLINE_CODE == airline_code) %>%
-    summarise(
-      Carrier = sum(DELAY_DUE_CARRIER > 0, na.rm = TRUE),
-      Weather = sum(DELAY_DUE_WEATHER > 0, na.rm = TRUE),
-      NAS = sum(DELAY_DUE_NAS > 0, na.rm = TRUE),
-      Security = sum(DELAY_DUE_SECURITY > 0, na.rm = TRUE),
-      Late_Aircraft = sum(DELAY_DUE_LATE_AIRCRAFT > 0, na.rm = TRUE)
-    ) %>%
-    pivot_longer(
-      cols = everything(),
-      names_to = "Cause",
-      values_to = "Frequency"
-    ) %>%
-    mutate(
-      Cause = recode(Cause,
-                     "NAS" = "National Air System",
-                     "Late_Aircraft" = "Late Aircraft")  # Rename causes
-    )
-}
-
   
 # Render Southwest Airlines Pie Chart
 output$southwestPieChart <- renderPlotly({
@@ -621,32 +603,6 @@ output$frontierPieChart <- renderPlotly({
       margin = list(t = 50)
     )
 })
-
-
-# Line Graph for Distance vs. Delay
-output$lineGraphDistanceDelay <- renderPlotly({
-    line_graph <- ggplot(distance_delay_data, aes(x = Distance_Label, y = Avg_Delay)) +
-        geom_line(color = "blue", linewidth = 1) +
-        geom_point(
-            aes(text = paste(
-                "Distance:", Distance_Label,
-                "<br>Avg Delay:", round(Avg_Delay, 2)
-            )),
-            color = "red",
-            size = 2
-        ) +
-        labs(
-            title = "Average Delay vs. Distance",
-            x = "Distance (Miles)",
-            y = "Average Delay (Minutes)"
-        ) +
-        theme_minimal(base_size = 12)
-    
-    # Use ggplotly with tooltips for interactivity
-    ggplotly(line_graph, tooltip = "text")
-})
-
-
   # Dynamic Choropleth Map Output
   output$choroplethMapOutput <- renderUI({
     if (input$mapType == "States") {
@@ -741,6 +697,147 @@ output$choroplethMapCities <- renderLeaflet({
       labels = c("0-10 min", "10-20 min", "20-35 min", ">35 min"),
       title = "Avg Delay",
       opacity = 1
+    )
+})
+
+# Filter airports with more than 15 minutes average delay and more than 2000 total flights (arriving + departing)
+filtered_airports_for_map <- flights_data %>%
+  select(ORIGIN, ORIGIN_CITY, DEST, DEST_CITY, ARR_DELAY, DEP_DELAY) %>%
+  pivot_longer(
+    cols = c(ORIGIN, DEST),
+    names_to = "Flight_Type",
+    values_to = "Airport"
+  ) %>%
+  pivot_longer(
+    cols = c(ORIGIN_CITY, DEST_CITY),
+    names_to = "City_Type",
+    values_to = "City"
+  ) %>%
+  filter(
+    (Flight_Type == "ORIGIN" & City_Type == "ORIGIN_CITY") | 
+    (Flight_Type == "DEST" & City_Type == "DEST_CITY")
+  ) %>%
+  group_by(Airport, City) %>%
+  summarise(
+    Avg_Delay = mean(ARR_DELAY + DEP_DELAY, na.rm = TRUE),  # Average delay (arriving + departing)
+    Total_Flights = n(),                                   # Total flights (arriving + departing)
+    .groups = "drop"
+  ) %>%
+  filter(Avg_Delay > 15 & Total_Flights > 2000) %>%  # Apply the filter for both conditions
+  select(Airport, City) %>%
+  distinct()
+
+# Update airport selection input to only include airports with Avg_Delay > 15 and Total_Flights > 2000
+observe({
+  updateSelectInput(
+    session,
+    "origin_airport",
+    choices = filtered_airports_for_map$Airport,
+    selected = filtered_airports_for_map$Airport[1]
+  )
+})
+
+# Render route map with legend
+output$routeMap <- renderLeaflet({
+  req(input$origin_airport, input$flight_mode)
+
+  # Filter routes based on selected airport and flight mode
+  if (input$flight_mode == "departing") {
+    selected_routes <- flights_data %>%
+      filter(ORIGIN == input$origin_airport) %>%
+      group_by(DEST, DEST_CITY, ORIGIN_CITY, ORIGIN, origin_lat, origin_long, dest_lat, dest_long) %>%
+      summarise(
+        Avg_Delay = mean(ARR_DELAY + DEP_DELAY, na.rm = TRUE),
+        Total_Flights = n(),
+        .groups = "drop"
+      )
+  } else {
+    selected_routes <- flights_data %>%
+      filter(DEST == input$origin_airport) %>%
+      group_by(ORIGIN, ORIGIN_CITY, DEST_CITY, DEST, origin_lat, origin_long, dest_lat, dest_long) %>%
+      summarise(
+        Avg_Delay = mean(ARR_DELAY + DEP_DELAY, na.rm = TRUE),
+        Total_Flights = n(),
+        .groups = "drop"
+      )
+  }
+
+  # Handle case when no routes are available
+  if (nrow(selected_routes) == 0) {
+    return(leaflet() %>%
+             addTiles() %>%
+             addPopups(
+               lng = -98.35, lat = 39.5,
+               popup = "No routes available for the selected airport."
+             ))
+  }
+
+  # Color coding for delays
+  selected_routes <- selected_routes %>%
+    mutate(
+        Delay_Color = case_when(
+        Avg_Delay < 5 ~ "green",
+        Avg_Delay >= 5 & Avg_Delay <= 20 ~ "yellow",
+        Avg_Delay > 20 & Avg_Delay <= 35 ~ "red",
+        Avg_Delay > 35 ~ "darkred",
+        is.na(Avg_Delay) ~ "gray",  # Explicitly handle NA values
+        TRUE ~ "black"  # Fallback for unexpected cases
+      )
+    )
+
+  # Generate the map with routes and markers
+  map <- leaflet(data = selected_routes) %>%
+    addTiles() %>%
+    addCircleMarkers(
+      lng = if (input$flight_mode == "departing") ~dest_long else ~origin_long,
+      lat = if (input$flight_mode == "departing") ~dest_lat else ~origin_lat,
+      color = ~Delay_Color, radius = 6,
+      label = if (input$flight_mode == "departing") {
+        ~paste(DEST_CITY, "Avg Delay:", round(Avg_Delay, 2), "mins Total Flights:", Total_Flights)
+      } else {
+        ~paste(ORIGIN_CITY, "Avg Delay:", round(Avg_Delay, 2), "mins Total Flights:", Total_Flights)
+      }
+    ) %>%
+    addCircleMarkers(
+      lng = if (input$flight_mode == "departing") ~origin_long else ~dest_long,
+      lat = if (input$flight_mode == "departing") ~origin_lat else ~dest_lat,
+      color = "blue", radius = 8,
+      label = if (input$flight_mode == "departing") {
+        ~paste(ORIGIN_CITY, "Airport Code:", ORIGIN)
+      } else {
+        ~paste(DEST_CITY, "Airport Code:", DEST)
+      }
+    )
+
+  # Add route polylines
+  for (i in 1:nrow(selected_routes)) {
+    map <- map %>%
+      addPolylines(
+        lng = c(
+          if (input$flight_mode == "departing") selected_routes$origin_long[i] else selected_routes$dest_long[i],
+          if (input$flight_mode == "departing") selected_routes$dest_long[i] else selected_routes$origin_long[i]
+        ),
+        lat = c(
+          if (input$flight_mode == "departing") selected_routes$origin_lat[i] else selected_routes$dest_lat[i],
+          if (input$flight_mode == "departing") selected_routes$dest_lat[i] else selected_routes$origin_lat[i]
+        ),
+        color = selected_routes$Delay_Color[i], weight = 2
+      )
+  }
+
+  # Add a legend to explain route colors
+  map %>%
+    addLegend(
+      position = "bottomright",
+      colors = c("green", "yellow", "red", "darkred", "gray"),
+      labels = c("<5 min", "5-20 min", "20-35 min", ">35 min", "No Data"),
+      title = "Avg Delay",
+      opacity = 1
+    ) %>%
+    setView(
+      lng = mean(if (input$flight_mode == "departing") selected_routes$origin_long else selected_routes$dest_long, na.rm = TRUE),
+      lat = mean(if (input$flight_mode == "departing") selected_routes$origin_lat else selected_routes$dest_lat, na.rm = TRUE),
+      zoom = 5
     )
 })
 
@@ -967,146 +1064,27 @@ output$areaGraph <- renderPlotly({
   ggplotly(area_plot, tooltip = "text")
 })
 
-
-# Filter airports with more than 15 minutes average delay and more than 2000 total flights (arriving + departing)
-filtered_airports_for_map <- flights_data %>%
-  select(ORIGIN, ORIGIN_CITY, DEST, DEST_CITY, ARR_DELAY, DEP_DELAY) %>%
-  pivot_longer(
-    cols = c(ORIGIN, DEST),
-    names_to = "Flight_Type",
-    values_to = "Airport"
-  ) %>%
-  pivot_longer(
-    cols = c(ORIGIN_CITY, DEST_CITY),
-    names_to = "City_Type",
-    values_to = "City"
-  ) %>%
-  filter(
-    (Flight_Type == "ORIGIN" & City_Type == "ORIGIN_CITY") | 
-    (Flight_Type == "DEST" & City_Type == "DEST_CITY")
-  ) %>%
-  group_by(Airport, City) %>%
-  summarise(
-    Avg_Delay = mean(ARR_DELAY + DEP_DELAY, na.rm = TRUE),  # Average delay (arriving + departing)
-    Total_Flights = n(),                                   # Total flights (arriving + departing)
-    .groups = "drop"
-  ) %>%
-  filter(Avg_Delay > 15 & Total_Flights > 2000) %>%  # Apply the filter for both conditions
-  select(Airport, City) %>%
-  distinct()
-
-# Update airport selection input to only include airports with Avg_Delay > 15 and Total_Flights > 2000
-observe({
-  updateSelectInput(
-    session,
-    "origin_airport",
-    choices = filtered_airports_for_map$Airport,
-    selected = filtered_airports_for_map$Airport[1]
-  )
-})
-
-# Render route map with legend
-output$routeMap <- renderLeaflet({
-  req(input$origin_airport, input$flight_mode)
-
-  # Filter routes based on selected airport and flight mode
-  if (input$flight_mode == "departing") {
-    selected_routes <- flights_data %>%
-      filter(ORIGIN == input$origin_airport) %>%
-      group_by(DEST, DEST_CITY, ORIGIN_CITY, ORIGIN, origin_lat, origin_long, dest_lat, dest_long) %>%
-      summarise(
-        Avg_Delay = mean(ARR_DELAY + DEP_DELAY, na.rm = TRUE),
-        Total_Flights = n(),
-        .groups = "drop"
-      )
-  } else {
-    selected_routes <- flights_data %>%
-      filter(DEST == input$origin_airport) %>%
-      group_by(ORIGIN, ORIGIN_CITY, DEST_CITY, DEST, origin_lat, origin_long, dest_lat, dest_long) %>%
-      summarise(
-        Avg_Delay = mean(ARR_DELAY + DEP_DELAY, na.rm = TRUE),
-        Total_Flights = n(),
-        .groups = "drop"
-      )
-  }
-
-  # Handle case when no routes are available
-  if (nrow(selected_routes) == 0) {
-    return(leaflet() %>%
-             addTiles() %>%
-             addPopups(
-               lng = -98.35, lat = 39.5,
-               popup = "No routes available for the selected airport."
-             ))
-  }
-
-  # Color coding for delays
-  selected_routes <- selected_routes %>%
-    mutate(
-        Delay_Color = case_when(
-        Avg_Delay < 5 ~ "green",
-        Avg_Delay >= 5 & Avg_Delay <= 20 ~ "yellow",
-        Avg_Delay > 20 & Avg_Delay <= 35 ~ "red",
-        Avg_Delay > 35 ~ "darkred",
-        is.na(Avg_Delay) ~ "gray",  # Explicitly handle NA values
-        TRUE ~ "black"  # Fallback for unexpected cases
-      )
-    )
-
-  # Generate the map with routes and markers
-  map <- leaflet(data = selected_routes) %>%
-    addTiles() %>%
-    addCircleMarkers(
-      lng = if (input$flight_mode == "departing") ~dest_long else ~origin_long,
-      lat = if (input$flight_mode == "departing") ~dest_lat else ~origin_lat,
-      color = ~Delay_Color, radius = 6,
-      label = if (input$flight_mode == "departing") {
-        ~paste(DEST_CITY, "Avg Delay:", round(Avg_Delay, 2), "mins Total Flights:", Total_Flights)
-      } else {
-        ~paste(ORIGIN_CITY, "Avg Delay:", round(Avg_Delay, 2), "mins Total Flights:", Total_Flights)
-      }
-    ) %>%
-    addCircleMarkers(
-      lng = if (input$flight_mode == "departing") ~origin_long else ~dest_long,
-      lat = if (input$flight_mode == "departing") ~origin_lat else ~dest_lat,
-      color = "blue", radius = 8,
-      label = if (input$flight_mode == "departing") {
-        ~paste(ORIGIN_CITY, "Airport Code:", ORIGIN)
-      } else {
-        ~paste(DEST_CITY, "Airport Code:", DEST)
-      }
-    )
-
-  # Add route polylines
-  for (i in 1:nrow(selected_routes)) {
-    map <- map %>%
-      addPolylines(
-        lng = c(
-          if (input$flight_mode == "departing") selected_routes$origin_long[i] else selected_routes$dest_long[i],
-          if (input$flight_mode == "departing") selected_routes$dest_long[i] else selected_routes$origin_long[i]
-        ),
-        lat = c(
-          if (input$flight_mode == "departing") selected_routes$origin_lat[i] else selected_routes$dest_lat[i],
-          if (input$flight_mode == "departing") selected_routes$dest_lat[i] else selected_routes$origin_lat[i]
-        ),
-        color = selected_routes$Delay_Color[i], weight = 2
-      )
-  }
-
-  # Add a legend to explain route colors
-  map %>%
-    addLegend(
-      position = "bottomright",
-      colors = c("green", "yellow", "red", "darkred", "gray"),
-      labels = c("<5 min", "5-20 min", "20-35 min", ">35 min", "No Data"),
-      title = "Avg Delay",
-      opacity = 1
-    ) %>%
-    setView(
-      lng = mean(if (input$flight_mode == "departing") selected_routes$origin_long else selected_routes$dest_long, na.rm = TRUE),
-      lat = mean(if (input$flight_mode == "departing") selected_routes$origin_lat else selected_routes$dest_lat, na.rm = TRUE),
-      zoom = 5
-    )
+# Line Graph for Distance vs. Delay
+output$lineGraphDistanceDelay <- renderPlotly({
+    line_graph <- ggplot(distance_delay_data, aes(x = Distance_Label, y = Avg_Delay)) +
+        geom_line(color = "blue", linewidth = 1) +
+        geom_point(
+            aes(text = paste(
+                "Distance:", Distance_Label,
+                "<br>Avg Delay:", round(Avg_Delay, 2)
+            )),
+            color = "red",
+            size = 2
+        ) +
+        labs(
+            title = "Average Delay vs. Distance",
+            x = "Distance (Miles)",
+            y = "Average Delay (Minutes)"
+        ) +
+        theme_minimal(base_size = 12)
+    
+    # Use ggplotly with tooltips for interactivity
+    ggplotly(line_graph, tooltip = "text")
 })
 
 
